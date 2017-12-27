@@ -47,6 +47,7 @@ function edonode(baseStream: BaseStream, rpc: Object | void, options: Options): 
   const onConnect = ({ rpc }) => {
     _rpc = rpc
     backoff.reset()
+    return rpc
   }
 
   const requestReconnect = () => {
