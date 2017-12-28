@@ -24,7 +24,7 @@ type Options = {
   autoReconnect?: boolean,
   debug?: boolean,
   key: string,
-  connectionId?: string | () => string | () => Promise<string>,
+  connectionId?: string | (() => string) | (() => Promise<string>),
 }
 type Context = { getToken: ?GetToken }
 // @NOTE return type any, not sure how to proxy the Face type through
