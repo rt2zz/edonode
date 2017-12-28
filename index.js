@@ -144,7 +144,7 @@ function connectRpc(
   
   // attempt to identify asap
   async function identify () {
-    let realizedConnectionId = await options.connectionId
+    let realizedConnectionId = typeof options.connectionId === 'function' ? await options.connectionId : options.connectionId
     if (realizedConnectionId) stream.write({ type: "Identify", connectionId: realizedConnectionId })
   }
   identify()
@@ -152,7 +152,7 @@ function connectRpc(
 
   const callRemote = async (methodKey, ...args) => {
     // @TODO more efficient way than attaching to every call? it can already be closed over in the stream
-    let connectionId = await options.connectionId
+    let connectionId = typeof options.connectionId === 'function' ? await options.connectionId : options.connectionId
     return new Promise(async (resolve, reject) => {
       let callId = Math.random().toString()
       callPromises.set(callId, { resolve, reject })
