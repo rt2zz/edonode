@@ -39,6 +39,7 @@ function edonode(baseStream: BaseStream, rpc: Object | void, options: Options): 
   let _rpc
   let _rpcPromise
   let _connectTimeout
+
   let _context: Context = {
     getToken: null
   }
@@ -51,15 +52,21 @@ function edonode(baseStream: BaseStream, rpc: Object | void, options: Options): 
   }
 
   const requestReconnect = () => {
+    // if reconnect alreay pending, noop
+    if (_connectTimeout) return
+
     _rpc = null
     _rpcPromise = null
     const wait = backoff.duration()
-    console.log("requestReconnect, connecting in", wait)
+    console.log("requestReconnect, connecting in", wait, _connectTimeout)
     _connectTimeout = setTimeout(connect, wait)
   }
 
   const connect = () => {
-    clearTimeout(_connectTimeout) // clear any scheduled connect
+    // clear any scheduled connect
+    clearTimeout(_connectTimeout)
+    _connectTimeout = null
+
     _stream = typeof baseStream === "function" ? baseStream() : baseStream
     monitorStream(_stream)
     _rpcPromise = connectRpc(_stream, _context, rpc, options)
