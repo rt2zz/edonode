@@ -24,7 +24,7 @@ type Options = {
   autoReconnect?: boolean,
   debug?: boolean,
   key: string,
-  connectionIdPromise?: Promise<string>
+  connectionId?: string | () => string
 }
 type Context = { getToken: ?GetToken }
 // @NOTE return type any, not sure how to proxy the Face type through
@@ -141,16 +141,18 @@ function connectRpc(
   const callPromises: Map<string, { resolve: Function, reject: Function }> = new Map()
   // send the description of our available rpc immediately
   stream.write(remoteDescriptor)
-  console.log("ID", options)
-  // if we have a connectionIdPromie, identify asap
-  options.connectionIdPromise &&
-    options.connectionIdPromise.then((connectionId: string) => {
-      stream.write({ type: "Identify", connectionId })
-    })
+  
+  // attempt to identify asap
+  async function identify () {
+    let realizedConnectionId = await options.connectionId
+    if (realizedConnectionId) stream.write({ type: "Identify", connectionId: realizedConnectionId })
+  }
+  identify()
+    
 
   const callRemote = async (methodKey, ...args) => {
     // @TODO more efficient way than attaching to every call? it can already be closed over in the stream
-    let connectionId = options.connectionIdPromise ? await options.connectionIdPromise : undefined
+    let connectionId = await options.connectionId
     return new Promise(async (resolve, reject) => {
       let callId = Math.random().toString()
       callPromises.set(callId, { resolve, reject })
