@@ -8,7 +8,7 @@ import type { Duplex } from "stream"
 
 import type { Payload, RemoteDescriptor, SerialMethod, SerialProp } from "./types"
 
-type GetToken = () => Promise<string>
+type GetToken = () => Promise<string> | () => string | string
 export type Remote<Face> = {
   (): Promise<Face>,
   authenticate: (getToken: GetToken) => void
@@ -169,7 +169,7 @@ function connectRpc(
         callId,
         methodKey,
         args,
-        accessToken: _context.getToken ? await _context.getToken() : null,
+        accessToken: typeof _context.getToken === 'function' ? await _context.getToken() : _context.getToken,
         connectionId
       }
       stream.write(call)
