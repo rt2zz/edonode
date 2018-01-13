@@ -8,7 +8,8 @@ import type { Duplex } from "stream"
 
 import type { Payload, RemoteDescriptor, SerialMethod, SerialProp } from "./types"
 
-type GetToken = () => Promise<string> | () => string | string
+type PromisyGetterThing = string | (() => string) | (() => Promise<string>)
+type GetToken = PromisyGetterThing
 export type Remote<Face> = {
   (): Promise<Face>,
   authenticate: (getToken: GetToken) => void
@@ -24,7 +25,7 @@ type Options = {
   autoReconnect?: boolean,
   debug?: boolean,
   key: string,
-  connectionId?: string | (() => string) | (() => Promise<string>),
+  connectionId?: PromisyGetterThing,
 }
 type Context = { getToken: ?GetToken }
 // @NOTE return type any, not sure how to proxy the Face type through
