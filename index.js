@@ -6,13 +6,13 @@ import Backoff from "backo"
 import uuidv4 from "uuid/v4"
 import type { Duplex } from "stream"
 
-import type { Payload, RemoteDescriptor, SerialMethod, SerialProp } from "./types"
+import type { CallPayload, IdentifyPayload, Payload, RejectPayload, RemoteDescriptor, ResolvePayload, SerialMethod, SerialProp } from "./types"
 
 type PromisyGetterThing = string | (() => string) | (() => Promise<string>)
-type GetToken = PromisyGetterThing
+type GetAuthentication = PromisyGetterThing
 export type Remote<Face> = {
   (): Promise<Face>,
-  authenticate: (getToken: GetToken) => void
+  authenticate: (getAuthentication: GetAuthentication) => void
 }
 
 const sleepReject = async (timeout: number) =>
@@ -27,7 +27,7 @@ type Options = {
   key: string,
   connectionId?: PromisyGetterThing,
 }
-type Context = { getToken: ?GetToken }
+type Context = { getAuthentication: ?GetAuthentication }
 // @NOTE return type any, not sure how to proxy the Face type through
 function edonode(baseStream: BaseStream, rpc: Object | void, options: Options): any {
   // #validations
@@ -42,7 +42,7 @@ function edonode(baseStream: BaseStream, rpc: Object | void, options: Options): 
   let _connectTimeout
 
   let _context: Context = {
-    getToken: null
+    getAuthentication: null
   }
 
   // #plumbing
@@ -65,7 +65,7 @@ function edonode(baseStream: BaseStream, rpc: Object | void, options: Options): 
 
   const connect = () => {
     // clear any scheduled connect
-    clearTimeout(_connectTimeout)
+    _connectTimeout !== null && clearTimeout(_connectTimeout)
     _connectTimeout = null
 
     _stream = typeof baseStream === "function" ? baseStream() : baseStream
@@ -107,8 +107,8 @@ function edonode(baseStream: BaseStream, rpc: Object | void, options: Options): 
     ])
   }
 
-  remote.authenticate = (getToken: GetToken) => {
-    _context.getToken = getToken
+  remote.authenticate = (getAuthentication: GetAuthentication) => {
+    _context.getAuthentication = getAuthentication
   }
 
   return remote
@@ -132,7 +132,8 @@ function prepareRPC(rpc): [Map<string, Function>, RemoteDescriptors] {
       props.push({ path: this.path, node })
     }
   })
-  return [registry, { type: "RemoteDescriptor", methods, props }]
+  let remoteDescriptor: RemoteDescriptor = { type: "RemoteDescriptor", methods, props }
+  return [registry, remoteDescriptor]
 }
 
 // @NOTE flow stream type does not understand object mode streams
@@ -153,7 +154,10 @@ function connectRpc(
   // attempt to identify asap
   async function identify () {
     let realizedConnectionId = typeof options.connectionId === 'function' ? await options.connectionId() : options.connectionId
-    if (realizedConnectionId) stream.write({ type: "Identify", connectionId: realizedConnectionId })
+    if (realizedConnectionId) {
+      let identifyPayload: IdentifyPayload = { type: "Identify", connectionId: realizedConnectionId }
+      stream.write(identifyPayload)
+    }
   }
   identify()
     
@@ -165,12 +169,12 @@ function connectRpc(
     return new Promise(async (resolve, reject) => {
       let callId = Math.random().toString()
       callPromises.set(callId, { resolve, reject })
-      let call = {
+      let call: CallPayload = {
         type: "Call",
         callId,
         methodKey,
         args,
-        accessToken: typeof _context.getToken === 'function' ? await _context.getToken() : _context.getToken,
+        authentication: typeof _context.getAuthentication === 'function' ? await _context.getAuthentication() : _context.getAuthentication,
         connectionId
       }
       stream.write(call)
@@ -209,18 +213,20 @@ function connectRpc(
 
         try {
           let value = await method.apply(payload, payload.args)
-          stream.write({
+          let resolvePayload: ResolvePayload =  {
             type: "Resolve",
-            callId: payload.callId,
-            value
-          })
+          callId: payload.callId,
+          value
+        }
+          stream.write(resolvePayload)
         } catch (err) {
-          stream.write({
+          let rejectPayload: RejectPayload = {
             type: "Reject",
             callId: payload.callId,
             catch: err.message,
             stack: err.stack
-          })
+          }
+          stream.write(rejectPayload)
         }
       } else if (payload.type === "Resolve") {
         let { resolve } = callPromises.get(payload.callId) || {}
