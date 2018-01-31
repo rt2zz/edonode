@@ -22,7 +22,7 @@ export type CallPayload = {
   methodKey: string,
   args: Array<any>,
   authentication: ?string,
-  connectionId: ?string
+  sessionId: ?string
 }
 
 export type ResolvePayload = {
@@ -40,7 +40,7 @@ export type RejectPayload = {
 
 export type IdentifyPayload = {
   type: "Identify",
-  connectionId: string
+  sessionId: string
 }
 
 export type Payload =

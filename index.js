@@ -25,7 +25,7 @@ type Options = {
   autoReconnect?: boolean,
   debug?: boolean,
   key: string,
-  connectionId?: PromisyGetterThing,
+  sessionId?: PromisyGetterThing,
 }
 type Context = { getAuthentication: ?GetAuthentication }
 // @NOTE return type any, not sure how to proxy the Face type through
@@ -153,9 +153,9 @@ function connectRpc(
   
   // attempt to identify asap
   async function identify () {
-    let realizedConnectionId = typeof options.connectionId === 'function' ? await options.connectionId() : options.connectionId
-    if (realizedConnectionId) {
-      let identifyPayload: IdentifyPayload = { type: "Identify", connectionId: realizedConnectionId }
+    let realizedSessionId = typeof options.sessionId === 'function' ? await options.sessionId() : options.sessionId
+    if (realizedSessionId) {
+      let identifyPayload: IdentifyPayload = { type: "Identify", sessionId: realizedSessionId }
       stream.write(identifyPayload)
     }
   }
@@ -164,7 +164,7 @@ function connectRpc(
 
   const callRemote = async (methodKey, ...args) => {
     // @TODO more efficient way than attaching to every call? it can already be closed over in the stream
-    let connectionId = typeof options.connectionId === 'function' ? await options.connectionId() : options.connectionId
+    let sessionId = typeof options.sessionId === 'function' ? await options.sessionId() : options.sessionId
 
     return new Promise(async (resolve, reject) => {
       let callId = Math.random().toString()
@@ -175,7 +175,7 @@ function connectRpc(
         methodKey,
         args,
         authentication: typeof _context.getAuthentication === 'function' ? await _context.getAuthentication() : _context.getAuthentication,
-        connectionId
+        sessionId
       }
       stream.write(call)
     })
@@ -197,8 +197,8 @@ function connectRpc(
   return new Promise((resolveConnect, rejectConnect) => {
     stream.on("data", async (payload: Payload) => {
       if (payload.type === "Identify") {
-        console.log("SET REMOTE", payload.connectionId)
-        connectionRegistry.set(registryKey(options.key, payload.connectionId), remotes)
+        console.log("SET REMOTE", payload.sessionId)
+        connectionRegistry.set(registryKey(options.key, payload.sessionId), remotes)
       } else if (payload.type === "RemoteDescriptor") {
         resolveConnect({ rpc: parseRPC(payload) })
       } else if (payload.type === "Call") {
@@ -257,12 +257,11 @@ function connectRpc(
   })
 }
 
-function registryKey(key: string, connectionId: string) {
-  return key + "::" + connectionId
+function registryKey(key: string, sessionId: string) {
+  return key + "::" + sessionId
 }
 
 export default edonode
-export function getLocalRemote(key: string, connectionId: string): any {
-  console.log("GET REMOTE", connectionRegistry, key, connectionId)
-  return connectionRegistry.get(registryKey(key, connectionId))
+export function getLocalRemote(key: string, sessionId: string): any {
+  return connectionRegistry.get(registryKey(key, sessionId))
 }
