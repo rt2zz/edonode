@@ -13,39 +13,36 @@ export type SerialMethod = {
 export type RemoteDescriptor = {
   type: "RemoteDescriptor",
   methods: Array<SerialMethod>,
-  props: Array<SerialProp>
+  props: Array<SerialProp>,
+  nonce: string,
+  sessionId?: string,
 }
 
-export type CallPayload = {
+export type CallPayload = {|
   type: "Call",
   callId: string,
   methodKey: string,
   args: Array<any>,
   authentication: ?string,
+  signature: ?string,
   sessionId: ?string
-}
+|}
 
-export type ResolvePayload = {
+export type ResolvePayload = {|
   type: "Resolve",
   callId: string,
   value: any
-}
+|}
 
-export type RejectPayload = {
+export type RejectPayload = {|
   type: "Reject",
   callId: string,
   catch: string,
   stack: any
-}
-
-export type IdentifyPayload = {
-  type: "Identify",
-  sessionId: string
-}
+|}
 
 export type Payload =
   | RemoteDescriptor
   | CallPayload
   | ResolvePayload
   | RejectPayload
-  | IdentifyPayload

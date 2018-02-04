@@ -6,13 +6,22 @@ import Backoff from "backo"
 import uuidv4 from "uuid/v4"
 import type { Duplex } from "stream"
 
-import type { CallPayload, IdentifyPayload, Payload, RejectPayload, RemoteDescriptor, ResolvePayload, SerialMethod, SerialProp } from "./types"
+import type { CallPayload, Payload, RejectPayload, RemoteDescriptor, ResolvePayload, SerialMethod, SerialProp } from "./types"
+
+const CALL_TYPE = "Call"
+export const SIGN_TYPE_NONCE = "nonce"
+const NONCE_NOT_INITIALIZED = 'NONCE_NOT_INITIALIZED'
 
 type PromisyGetterThing = string | (() => string) | (() => Promise<string>)
-type GetAuthentication = PromisyGetterThing
+type Authenticator = PromisyGetterThing
+type Signer = (string) => Promise<string>
+type SignerOptions = {
+  type: typeof SIGN_TYPE_NONCE,
+}
 export type Remote<Face> = {
   (): Promise<Face>,
-  authenticate: (getAuthentication: GetAuthentication) => void
+  authenticate: (authenticator: Authenticator) => void,
+  sign: (signer: Signer, options: SignerOptions) => void
 }
 
 const sleepReject = async (timeout: number) =>
@@ -21,13 +30,19 @@ const sleepReject = async (timeout: number) =>
 export let connectionRegistry: Map<string, any> = new Map()
 
 type BaseStream = () => Duplex | Object
+type VerifierTypeNonce = (nonce: string, signature: string) => void
 type Options = {
   autoReconnect?: boolean,
   debug?: boolean,
   key: string,
   sessionId?: PromisyGetterThing,
+  verifier?: VerifierTypeNonce
 }
-type Context = { getAuthentication: ?GetAuthentication }
+type ContextMethod<F, O> = {
+  v?: F,
+  options?: O,
+}
+type Context = { auth: ContextMethod<Authenticator, void>, sign: ContextMethod<Signer, SignerOptions>, remoteNonce: string, }
 // @NOTE return type any, not sure how to proxy the Face type through
 function edonode(baseStream: BaseStream, rpc: Object | void, options: Options): any {
   // #validations
@@ -42,12 +57,15 @@ function edonode(baseStream: BaseStream, rpc: Object | void, options: Options): 
   let _connectTimeout
 
   let _context: Context = {
-    getAuthentication: null
+    auth: { },
+    sign: { },
+    remoteNonce: NONCE_NOT_INITIALIZED,
   }
 
   // #plumbing
-  const onConnect = ({ rpc }) => {
+  const onConnect = ({ rpc, nonce }) => {
     _rpc = rpc
+    _context.remoteNonce = nonce
     backoff.reset()
     return rpc
   }
@@ -107,19 +125,17 @@ function edonode(baseStream: BaseStream, rpc: Object | void, options: Options): 
     ])
   }
 
-  remote.authenticate = (getAuthentication: GetAuthentication) => {
-    _context.getAuthentication = getAuthentication
+  remote.authenticate = (authenticator: Authenticator) => {
+    _context.auth = { v: authenticator }
+  }
+
+  remote.sign = async (signer, options = { type: SIGN_TYPE_NONCE }) => {
+    _context.sign = { v: signer, options }
   }
 
   return remote
 }
-
-type RemoteDescriptors = {
-  methods: Array<SerialMethod>,
-  props: Array<SerialProp>
-}
-
-function prepareRPC(rpc): [Map<string, Function>, RemoteDescriptors] {
+async function prepareRPC(rpc, options: Options): Promise<[Map<string, Function>, RemoteDescriptor]> {
   let methods = []
   let props = []
   let registry = new Map()
@@ -132,12 +148,15 @@ function prepareRPC(rpc): [Map<string, Function>, RemoteDescriptors] {
       props.push({ path: this.path, node })
     }
   })
-  let remoteDescriptor: RemoteDescriptor = { type: "RemoteDescriptor", methods, props }
+
+  let sessionId = typeof options.sessionId === 'function' ? await options.sessionId() : options.sessionId
+
+  let remoteDescriptor: RemoteDescriptor = { type: "RemoteDescriptor", methods, props, nonce: uuidv4(), sessionId  }
   return [registry, remoteDescriptor]
 }
 
 // @NOTE flow stream type does not understand object mode streams
-function connectRpc(
+async function connectRpc(
   _stream: any,
   _context: Context,
   rpc: ?Object,
@@ -146,26 +165,15 @@ function connectRpc(
   let stream = msgpackStream(_stream)
   let remotes = {}
 
-  const [localRegistry, remoteDescriptor] = prepareRPC(rpc)
+  const [localRegistry, remoteDescriptor] = await prepareRPC(rpc, options)
   const callPromises: Map<string, { resolve: Function, reject: Function }> = new Map()
+  
   // send the description of our available rpc immediately
   stream.write(remoteDescriptor)
   
-  // attempt to identify asap
-  async function identify () {
-    let realizedSessionId = typeof options.sessionId === 'function' ? await options.sessionId() : options.sessionId
-    if (realizedSessionId) {
-      let identifyPayload: IdentifyPayload = { type: "Identify", sessionId: realizedSessionId }
-      stream.write(identifyPayload)
-    }
-  }
-  identify()
-    
-
   const callRemote = async (methodKey, ...args) => {
     // @TODO more efficient way than attaching to every call? it can already be closed over in the stream
     let sessionId = typeof options.sessionId === 'function' ? await options.sessionId() : options.sessionId
-
     return new Promise(async (resolve, reject) => {
       let callId = Math.random().toString()
       callPromises.set(callId, { resolve, reject })
@@ -174,14 +182,16 @@ function connectRpc(
         callId,
         methodKey,
         args,
-        authentication: typeof _context.getAuthentication === 'function' ? await _context.getAuthentication() : _context.getAuthentication,
-        sessionId
+        sessionId,
+        authentication: typeof _context.auth.v === 'function' ?  await _context.auth.v() : _context.auth.v,
+        signature: typeof _context.sign.v  === 'function' ? await _context.sign.v(_context.remoteNonce) : _context.sign.v,
       }
       stream.write(call)
     })
   }
 
-  const parseRPC = (data: RemoteDescriptor) => {
+  function parseRPC (data: RemoteDescriptor): { rpc: Object, nonce: string } {
+
     let mkmethod = methodKey => {
       return async (...args) => callRemote(methodKey, ...args)
     }
@@ -191,17 +201,18 @@ function connectRpc(
     data.props.forEach(p => {
       _.set(remotes, p.path, p.node)
     })
-    return remotes
+    
+    // store connection in registry
+    data.sessionId && connectionRegistry.set(registryKey(options.key, data.sessionId), remotes)
+
+    return { rpc: remotes, nonce: data.nonce }
   }
 
   return new Promise((resolveConnect, rejectConnect) => {
     stream.on("data", async (payload: Payload) => {
-      if (payload.type === "Identify") {
-        console.log("SET REMOTE", payload.sessionId)
-        connectionRegistry.set(registryKey(options.key, payload.sessionId), remotes)
-      } else if (payload.type === "RemoteDescriptor") {
-        resolveConnect({ rpc: parseRPC(payload) })
-      } else if (payload.type === "Call") {
+      if (payload.type === "RemoteDescriptor") {
+        resolveConnect(parseRPC(payload))
+      } else if (payload.type === CALL_TYPE) {
         if (options.debug) console.log("## Call", payload)
         // @TODO potential optimization by not setting for every call?
         // @TODO cleanup connectionRegistry after disconnect
@@ -212,12 +223,21 @@ function connectRpc(
         }
 
         try {
+          if (payload.signature) {
+            // do not allow signature to be provided if the counterparty does not have a verifier implemented
+            if (!options.verifier) throw new Error('jkjhgkiygf')
+            // verifier should confirm the nonce is signed
+            // also need to memoize either here or in verifier
+            // @TODO implement other verification types. for now only can verify nonce
+            else await options.verifier(remoteDescriptor.nonce, payload.signature)
+          }
+
           let value = await method.apply(payload, payload.args)
           let resolvePayload: ResolvePayload =  {
             type: "Resolve",
-          callId: payload.callId,
-          value
-        }
+            callId: payload.callId,
+            value
+          }
           stream.write(resolvePayload)
         } catch (err) {
           let rejectPayload: RejectPayload = {
