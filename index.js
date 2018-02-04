@@ -30,13 +30,13 @@ const sleepReject = async (timeout: number) =>
 export let connectionRegistry: Map<string, any> = new Map()
 
 type BaseStream = () => Duplex | Object
-type VerifierTypeNonce = (nonce: string, signature: string) => void
+type VerifyTypeNonce = (nonce: string, signature: any) => void
 type Options = {
   autoReconnect?: boolean,
   debug?: boolean,
   key: string,
   sessionId?: PromisyGetterThing,
-  verifier?: VerifierTypeNonce
+  verify?: VerifyTypeNonce
 }
 type ContextMethod<F, O> = {
   v?: F,
@@ -224,12 +224,12 @@ async function connectRpc(
 
         try {
           if (payload.signature) {
-            // do not allow signature to be provided if the counterparty does not have a verifier implemented
-            if (!options.verifier) throw new Error('jkjhgkiygf')
+            // do not allow signature to be provided if the counterparty does not have a verify implemented
+            if (!options.verify) throw new Error('edonode: signature was provided but no verify method exists')
             // verifier should confirm the nonce is signed
             // also need to memoize either here or in verifier
             // @TODO implement other verification types. for now only can verify nonce
-            else await options.verifier(remoteDescriptor.nonce, payload.signature)
+            else await options.verify(remoteDescriptor.nonce, payload.signature)
           }
 
           let value = await method.apply(payload, payload.args)
