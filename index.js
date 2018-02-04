@@ -1,7 +1,7 @@
 // @flow
 import msgpackStream from "msgpack5-stream"
 import traverse from "traverse"
-import _ from "lodash"
+import { memoize as _memoize, set as _set } from "lodash"
 import Backoff from "backo"
 import uuidv4 from "uuid/v4"
 import type { Duplex } from "stream"
@@ -20,7 +20,7 @@ type SignerOptions = {
 }
 export type Remote<Face> = {
   (): Promise<Face>,
-  authenticate: (authenticator: Authenticator) => void,
+  auth: (authenticator: Authenticator) => void,
   sign: (signer: Signer, options: SignerOptions) => void
 }
 
@@ -125,12 +125,15 @@ function edonode(baseStream: BaseStream, rpc: Object | void, options: Options): 
     ])
   }
 
-  remote.authenticate = (authenticator: Authenticator) => {
+  remote.auth = (authenticator: Authenticator) => {
+    if (_context.auth.v) throw new Error('edonode: hot swapping auth is not currently supported')
     _context.auth = { v: authenticator }
   }
 
   remote.sign = async (signer, options = { type: SIGN_TYPE_NONCE }) => {
-    _context.sign = { v: signer, options }
+    if (_context.sign.v) throw new Error('edonode: hot swapping sign is not currently supported')
+    // @NOTE this is memoized which means signer need to be deterministic and pure. @TODO anyway to enforce this?
+    _context.sign = { v: _memoize(signer), options }
   }
 
   return remote
@@ -196,10 +199,10 @@ async function connectRpc(
       return async (...args) => callRemote(methodKey, ...args)
     }
     data.methods.forEach(m => {
-      _.set(remotes, m.path, mkmethod(m.key))
+      _set(remotes, m.path, mkmethod(m.key))
     })
     data.props.forEach(p => {
-      _.set(remotes, p.path, p.node)
+      _set(remotes, p.path, p.node)
     })
     
     // store connection in registry
