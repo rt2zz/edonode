@@ -25,7 +25,7 @@ export type Remote<Face> = {
 }
 
 const sleepReject = async (timeout: number) =>
-  new Promise((resolve, reject) => setTimeout(reject, timeout))
+  new Promise((resolve, reject) => setTimeout(() => reject(new Error(`edonode: connection timed out after ${timeout}ms`)), timeout))
 
 export let connectionRegistry: Map<string, any> = new Map()
 
@@ -77,7 +77,7 @@ function edonode(baseStream: BaseStream, rpc: Object | void, options: Options): 
     _rpc = null
     _rpcPromise = null
     const wait = backoff.duration()
-    console.log("requestReconnect, connecting in", wait, _connectTimeout)
+    if (options.debug) console.log("edonode: requestReconnect, connecting in", wait, _connectTimeout)
     _connectTimeout = setTimeout(connect, wait)
   }
 
@@ -97,18 +97,18 @@ function edonode(baseStream: BaseStream, rpc: Object | void, options: Options): 
   function monitorStream(stream) {
     // #stream monitoring
     stream.on("open", e => {
-      if (options.debug) console.log("OPEN", e)
+      if (options.debug) console.log("edonode: stream open", e)
     })
 
     stream.on("error", err => {
-      if (options.debug) console.log("Stream ERR", err)
+      if (options.debug) console.log("edonode: stream err", err)
       if (options.autoReconnect) requestReconnect()
     })
 
     stream.on("close", e => {
-      if (options.debug) console.log("Stream CLOSE", e)
+      if (options.debug) console.log("edonode: stream close", e)
       if (options.autoReconnect) requestReconnect()
-      else console.log("## stream closed, is cleanup required?")
+      // else: stream closed now, is cleanup required?
     })
   }
 
@@ -270,12 +270,6 @@ async function connectRpc(
         reject(e)
         callPromises.delete(payload.callId)
       }
-    })
-    stream.on("error", (err, data) => {
-      console.log("##########@@ remote error", err, data)
-    })
-    stream.on("close", (err, data) => {
-      console.log("##########@@ remote close", err, data)
     })
   })
 }
