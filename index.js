@@ -70,7 +70,8 @@ function edonode(baseStream: BaseStream, rpc: Object | void, options: Options): 
     return rpc
   }
 
-  const requestReconnect = () => {
+  const requestReconnect = error => {
+    if (options.debug && error) console.error("edonode: requestReconnect, error: ", error)
     // if reconnect alreay pending, noop
     if (_connectTimeout) return
 
