@@ -1,5 +1,5 @@
 // @flow
-import msgpackStream from "msgpack5-stream"
+import jsonStream from "json-lpduplex-stream"
 import traverse from "traverse"
 import { memoize as _memoize, set as _set } from "lodash"
 import Backoff from "backo"
@@ -36,7 +36,8 @@ type Options = {
   debug?: boolean,
   key: string,
   sessionId?: PromisyGetterThing,
-  verify?: VerifyTypeNonce
+  verify?: VerifyTypeNonce,
+  duplexSerializer?: Function,
 }
 type ContextMethod<F, O> = {
   v?: F,
@@ -166,7 +167,8 @@ async function connectRpc(
   rpc: ?Object,
   options: Options
 ): Promise<Object> {
-  let stream = msgpackStream(_stream)
+  let duplexSerializer = options.duplexSerializer || jsonStream
+  let stream = duplexSerializer(_stream)
   let remotes = {}
 
   const [localRegistry, remoteDescriptor] = await prepareRPC(rpc, options)

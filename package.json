@@ -10,8 +10,8 @@
   "license": "ISC",
   "dependencies": {
     "backo": "^1.1.0",
+    "json-lpduplex-stream": "^2.0.1",
     "lodash": "^4.17.4",
-    "msgpack5-stream": "^1.0.0",
     "traverse": "^0.6.6",
     "uuid": "^3.1.0"
   },
