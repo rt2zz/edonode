@@ -31,14 +31,13 @@ export let connectionRegistry: Map<string, any> = new Map()
 
 type BaseStream = () => Duplex | Object
 type VerifyTypeNonce = (nonce: string, signature: any) => void
-type Options = {
+type Options = {|
   autoReconnect?: boolean,
   debug?: boolean,
-  key: string,
   sessionId?: PromisyGetterThing,
   verify?: VerifyTypeNonce,
   duplexSerializer?: Function,
-}
+|}
 type ContextMethod<F, O> = {
   v?: F,
   options?: O,
@@ -209,7 +208,7 @@ async function connectRpc(
     })
     
     // store connection in registry
-    data.sessionId && connectionRegistry.set(registryKey(options.key, data.sessionId), remotes)
+    data.sessionId && connectionRegistry.set(data.sessionId, remotes)
 
     return { rpc: remotes, nonce: data.nonce }
   }
@@ -277,11 +276,7 @@ async function connectRpc(
   })
 }
 
-function registryKey(key: string, sessionId: string) {
-  return key + "::" + sessionId
-}
-
 export default edonode
-export function getLocalRemote(key: string, sessionId: string): any {
-  return connectionRegistry.get(registryKey(key, sessionId))
+export function getLocalRemote(sessionId: string): any {
+  return connectionRegistry.get(sessionId)
 }
