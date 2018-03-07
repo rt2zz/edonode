@@ -166,6 +166,7 @@ async function connectRpc(
   rpc: ?Object,
   options: Options
 ): Promise<Object> {
+  let _lastSessionId = null
   let duplexSerializer = options.duplexSerializer || jsonStream
   let stream = duplexSerializer(_stream)
   let remotes = {}
@@ -209,6 +210,7 @@ async function connectRpc(
     
     // store connection in registry
     data.sessionId && connectionRegistry.set(data.sessionId, remotes)
+    _lastSessionId = data.sessionId
 
     return { rpc: remotes, nonce: data.nonce }
   }
@@ -219,6 +221,13 @@ async function connectRpc(
         resolveConnect(parseRPC(payload))
       } else if (payload.type === CALL_TYPE) {
         if (options.debug) console.log("## Call", payload)
+
+        // @NOTE we allow sessionId to change on any call. The alternative is we could require the connection be reset completely on sessionId change
+        if (payload.sessionId !== _lastSessionId) {
+          _lastSessionId && connectionRegistry.delete(_lastSessionId)
+          _lastSessionId = payload.sessionId
+          payload.sessionId && connectionRegistry.set(payload.sessionId, remotes)
+        }
         // @TODO potential optimization by not setting for every call?
         // @TODO cleanup connectionRegistry after disconnect
         let method = localRegistry.get(payload.methodKey)
