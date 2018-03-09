@@ -8,6 +8,7 @@ import type { Duplex } from "stream"
 
 import type { CallPayload, Payload, RejectPayload, RemoteDescriptor, ResolvePayload, SerialMethod, SerialProp } from "./types"
 
+import { RemoteError } from './utils'
 import { TYPE_CALL, TYPE_RESOLVE, TYPE_REJECT, TYPE_DESCRIPTOR } from './constants'
 export const SIGN_TYPE_NONCE = "nonce"
 const NONCE_NOT_INITIALIZED = 'NONCE_NOT_INITIALIZED'
@@ -33,6 +34,7 @@ type BaseStream = () => Duplex | Object
 type VerifyTypeNonce = (nonce: string, signature: any) => void
 type Options = {|
   autoReconnect?: boolean,
+  name?: string,
   debug?: boolean,
   sessionId?: PromisyGetterThing,
   verify?: VerifyTypeNonce,
@@ -55,6 +57,9 @@ function edonode(baseStream: BaseStream, rpc: Object | void, options: Options): 
   let _rpc
   let _rpcPromise
   let _connectTimeout
+
+  // @NOTE default name to the baseStream name
+  options.name = options.name || baseStream.name
 
   let _context: Context = {
     auth: { },
@@ -170,9 +175,10 @@ async function connectRpc(
   let duplexSerializer = options.duplexSerializer || jsonStream
   let stream = duplexSerializer(_stream)
   let remotes = {}
+  let methodNames = {}
 
   const [localRegistry, remoteDescriptor] = await prepareRPC(rpc, options)
-  const callPromises: Map<string, { resolve: Function, reject: Function }> = new Map()
+  const callPromises: Map<string, { resolve: Function, reject: Function, methodKey: string }> = new Map()
   
   // send the description of our available rpc immediately
   stream.write(remoteDescriptor)
@@ -182,7 +188,7 @@ async function connectRpc(
     let sessionId = typeof options.sessionId === 'function' ? await options.sessionId() : options.sessionId
     return new Promise(async (resolve, reject) => {
       let callId = Math.random().toString()
-      callPromises.set(callId, { resolve, reject })
+      callPromises.set(callId, { resolve, reject, methodKey })
       let call: CallPayload = {
         type: TYPE_CALL,
         callId,
@@ -203,6 +209,7 @@ async function connectRpc(
       return async (...args) => callRemote(methodKey, ...args)
     }
     data.methods.forEach(m => {
+      methodNames[m.key] = m.path
       _set(remotes, m.path, mkmethod(m.key))
     })
     data.props.forEach(p => {
@@ -219,13 +226,14 @@ async function connectRpc(
   return new Promise((resolveConnect, rejectConnect) => {
     stream.on("error", (err) => {
       // @TODO should we expose this to the consumer via a onError callback or similar?
-      if (options.debug) console.error("## Error", err)
+      // @TODO hide this behind options.debug in the future
+      console.error("Edonode - Stream Error", err)
     })
     stream.on("data", async (payload: Payload) => {
       if (payload.type === TYPE_DESCRIPTOR) {
         resolveConnect(parseRPC(payload))
       } else if (payload.type === TYPE_CALL) {
-        if (options.debug) console.log("## Call", payload)
+        if (options.debug) console.log(`Edonode - Call - ${methodNames[payload.methodKey]}`, payload)
 
         // @NOTE we allow sessionId to change on any call. The alternative is we could require the connection be reset completely on sessionId change
         if (payload.sessionId !== _lastSessionId) {
@@ -268,7 +276,9 @@ async function connectRpc(
           stream.write(rejectPayload)
         }
       } else if (payload.type === TYPE_RESOLVE) {
-        let { resolve } = callPromises.get(payload.callId) || {}
+        let { resolve, methodKey } = callPromises.get(payload.callId) || {}
+        if (options.debug) console.log(`Edonode - Resolve - ${methodNames[methodKey]}`, payload)
+
         if (!resolve) {
           console.error("Missing required callPromise", payload)
           return
@@ -276,12 +286,14 @@ async function connectRpc(
         resolve(payload.value)
         callPromises.delete(payload.callId)
       } else if (payload.type === TYPE_REJECT) {
-        let { reject } = callPromises.get(payload.callId) || {}
+        let { reject, methodKey } = callPromises.get(payload.callId) || {}
+        if (options.debug) console.log(`Edonode - Reject - ${methodNames[methodKey]}`, payload)
+
         if (!reject) {
           console.error("Missing required callPromise", payload)
           return
         }
-        let e = new Error(payload.catch)
+        let e = new RemoteError(`remote: ${options.name || ''} - method: ${methodNames[methodKey]} - message: ${payload.catch}`)
         e.stack = payload.stack
         reject(e)
         callPromises.delete(payload.callId)
