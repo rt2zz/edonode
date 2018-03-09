@@ -204,8 +204,6 @@ async function connectRpc(
   }
 
   function parseRPC (data: RemoteDescriptor): { rpc: Object, nonce: string } {
-
-    if (!data.sessionId && data.methods.length) console.error(`no sessionId exists, but ${data.methods.length} methods are being provided. Without a sessionId there will be no way to address these methods.`)
     let mkmethod = methodKey => {
       return async (...args) => callRemote(methodKey, ...args)
     }
