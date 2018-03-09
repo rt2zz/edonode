@@ -39,6 +39,7 @@ type Options = {|
   sessionId?: PromisyGetterThing,
   verify?: VerifyTypeNonce,
   duplexSerializer?: Function,
+  timeout?: number,
 |}
 type ContextMethod<F, O> = {
   v?: F,
@@ -121,7 +122,7 @@ function edonode(baseStream: BaseStream, rpc: Object | void, options: Options): 
   // #init @TODO should we remove this and have it be lazy?
   connect()
 
-  function remote(timeout: number = 500) {
+  function remote(timeout: number = options.timeout || 500) {
     if (_rpc) return _rpc
     // @TODO implement reconnect logic
     return Promise.race([
