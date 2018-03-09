@@ -8,7 +8,7 @@ import type { Duplex } from "stream"
 
 import type { CallPayload, Payload, RejectPayload, RemoteDescriptor, ResolvePayload, SerialMethod, SerialProp } from "./types"
 
-const CALL_TYPE = "Call"
+import { TYPE_CALL, TYPE_RESOLVE, TYPE_REJECT, TYPE_DESCRIPTOR } from './constants'
 export const SIGN_TYPE_NONCE = "nonce"
 const NONCE_NOT_INITIALIZED = 'NONCE_NOT_INITIALIZED'
 
@@ -155,7 +155,7 @@ async function prepareRPC(rpc, options: Options): Promise<[Map<string, Function>
 
   let sessionId = typeof options.sessionId === 'function' ? await options.sessionId() : options.sessionId
 
-  let remoteDescriptor: RemoteDescriptor = { type: "RemoteDescriptor", methods, props, nonce: uuidv4(), sessionId  }
+  let remoteDescriptor: RemoteDescriptor = { type: TYPE_DESCRIPTOR, methods, props, nonce: uuidv4(), sessionId  }
   return [registry, remoteDescriptor]
 }
 
@@ -184,7 +184,7 @@ async function connectRpc(
       let callId = Math.random().toString()
       callPromises.set(callId, { resolve, reject })
       let call: CallPayload = {
-        type: "Call",
+        type: TYPE_CALL,
         callId,
         methodKey,
         args,
@@ -198,6 +198,7 @@ async function connectRpc(
 
   function parseRPC (data: RemoteDescriptor): { rpc: Object, nonce: string } {
 
+    if (!data.sessionId && data.methods.length) console.error(`no sessionId exists, but ${data.methods.length} methods are being provided. Without a sessionId there will be no way to address these methods.`)
     let mkmethod = methodKey => {
       return async (...args) => callRemote(methodKey, ...args)
     }
@@ -221,9 +222,9 @@ async function connectRpc(
       if (options.debug) console.error("## Error", err)
     })
     stream.on("data", async (payload: Payload) => {
-      if (payload.type === "RemoteDescriptor") {
+      if (payload.type === TYPE_DESCRIPTOR) {
         resolveConnect(parseRPC(payload))
-      } else if (payload.type === CALL_TYPE) {
+      } else if (payload.type === TYPE_CALL) {
         if (options.debug) console.log("## Call", payload)
 
         // @NOTE we allow sessionId to change on any call. The alternative is we could require the connection be reset completely on sessionId change
@@ -252,21 +253,21 @@ async function connectRpc(
 
           let value = await method.apply(payload, payload.args)
           let resolvePayload: ResolvePayload =  {
-            type: "Resolve",
+            type: TYPE_RESOLVE,
             callId: payload.callId,
             value
           }
           stream.write(resolvePayload)
         } catch (err) {
           let rejectPayload: RejectPayload = {
-            type: "Reject",
+            type: TYPE_REJECT,
             callId: payload.callId,
             catch: err.message,
             stack: err.stack
           }
           stream.write(rejectPayload)
         }
-      } else if (payload.type === "Resolve") {
+      } else if (payload.type === TYPE_RESOLVE) {
         let { resolve } = callPromises.get(payload.callId) || {}
         if (!resolve) {
           console.error("Missing required callPromise", payload)
@@ -274,7 +275,7 @@ async function connectRpc(
         }
         resolve(payload.value)
         callPromises.delete(payload.callId)
-      } else if (payload.type === "Reject") {
+      } else if (payload.type === TYPE_REJECT) {
         let { reject } = callPromises.get(payload.callId) || {}
         if (!reject) {
           console.error("Missing required callPromise", payload)
