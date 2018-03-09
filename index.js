@@ -216,6 +216,10 @@ async function connectRpc(
   }
 
   return new Promise((resolveConnect, rejectConnect) => {
+    stream.on("error", (err) => {
+      // @TODO should we expose this to the consumer via a onError callback or similar?
+      if (options.debug) console.error("## Error", err)
+    })
     stream.on("data", async (payload: Payload) => {
       if (payload.type === "RemoteDescriptor") {
         resolveConnect(parseRPC(payload))
