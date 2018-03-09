@@ -1,5 +1,7 @@
 // @flow
 
+import { TYPE_CALL, TYPE_RESOLVE, TYPE_REJECT, TYPE_DESCRIPTOR } from './constants'
+
 export type SerialProp = {
   path: string,
   node: any
@@ -11,7 +13,7 @@ export type SerialMethod = {
 }
 
 export type RemoteDescriptor = {
-  type: "RemoteDescriptor",
+  type: typeof TYPE_DESCRIPTOR,
   methods: Array<SerialMethod>,
   props: Array<SerialProp>,
   nonce: string,
@@ -19,7 +21,7 @@ export type RemoteDescriptor = {
 }
 
 export type CallPayload = {|
-  type: "Call",
+  type: typeof TYPE_CALL,
   callId: string,
   methodKey: string,
   args: Array<any>,
@@ -29,13 +31,13 @@ export type CallPayload = {|
 |}
 
 export type ResolvePayload = {|
-  type: "Resolve",
+  type: typeof TYPE_RESOLVE,
   callId: string,
   value: any
 |}
 
 export type RejectPayload = {|
-  type: "Reject",
+  type: typeof TYPE_REJECT,
   callId: string,
   catch: string,
   stack: any
