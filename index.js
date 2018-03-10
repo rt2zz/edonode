@@ -145,6 +145,7 @@ function edonode(baseStream: BaseStream, rpc: Object | void, options: Options): 
 
   return remote
 }
+
 async function prepareRPC(rpc, options: Options): Promise<[Map<string, Function>, RemoteDescriptor]> {
   let methods = []
   let props = []
@@ -153,7 +154,7 @@ async function prepareRPC(rpc, options: Options): Promise<[Map<string, Function>
     if (typeof node === "function") {
       let key = Math.random().toString()
       methods.push({ path: this.path, key })
-      registry.set(key, node)
+      registry.set(key, { method: node, path: this.path })
     } else {
       props.push({ path: this.path, node })
     }
@@ -176,7 +177,7 @@ async function connectRpc(
   let duplexSerializer = options.duplexSerializer || jsonStream
   let stream = duplexSerializer(_stream)
   let remotes = {}
-  let methodNames = {}
+  let remoteMethodNames = {}
 
   const [localRegistry, remoteDescriptor] = await prepareRPC(rpc, options)
   const callPromises: Map<string, { resolve: Function, reject: Function, methodKey: string }> = new Map()
@@ -208,7 +209,7 @@ async function connectRpc(
       return async (...args) => callRemote(methodKey, ...args)
     }
     data.methods.forEach(m => {
-      methodNames[m.key] = m.path
+      remoteMethodNames[m.key] = m.path
       _set(remotes, m.path, mkmethod(m.key))
     })
     data.props.forEach(p => {
@@ -232,17 +233,16 @@ async function connectRpc(
       if (payload.type === TYPE_DESCRIPTOR) {
         resolveConnect(parseRPC(payload))
       } else if (payload.type === TYPE_CALL) {
-        if (options.debug) console.log(`Edonode - Call - ${methodNames[payload.methodKey]}`, payload)
+        let { method, path } = localRegistry.get(payload.methodKey)
+        if (options.debug) console.log(`Edonode - Call - ${path}`, payload)
 
         // @NOTE we allow sessionId to change on any call. The alternative is we could require the connection be reset completely on sessionId change
+        // @TODO cleanup connectionRegistry after disconnect
         if (payload.sessionId !== _lastSessionId) {
           _lastSessionId && connectionRegistry.delete(_lastSessionId)
           _lastSessionId = payload.sessionId
           payload.sessionId && connectionRegistry.set(payload.sessionId, remotes)
         }
-        // @TODO potential optimization by not setting for every call?
-        // @TODO cleanup connectionRegistry after disconnect
-        let method = localRegistry.get(payload.methodKey)
         if (!method) {
           console.error("Missing required method", payload)
           return
@@ -276,7 +276,7 @@ async function connectRpc(
         }
       } else if (payload.type === TYPE_RESOLVE) {
         let { resolve, methodKey } = callPromises.get(payload.callId) || {}
-        if (options.debug) console.log(`Edonode - Resolve - ${methodNames[methodKey]}`, payload)
+        if (options.debug) console.log(`Edonode - Resolve - ${remoteMethodNames[methodKey]}`, payload)
 
         if (!resolve) {
           console.error("Missing required callPromise", payload)
@@ -286,13 +286,13 @@ async function connectRpc(
         callPromises.delete(payload.callId)
       } else if (payload.type === TYPE_REJECT) {
         let { reject, methodKey } = callPromises.get(payload.callId) || {}
-        if (options.debug) console.log(`Edonode - Reject - ${methodNames[methodKey]}`, payload)
+        if (options.debug) console.log(`Edonode - Reject - ${remoteMethodNames[methodKey]}`, payload)
 
         if (!reject) {
           console.error("Missing required callPromise", payload)
           return
         }
-        let e = new RemoteError(`remote: ${options.name || ''} - method: ${methodNames[methodKey]} - message: ${payload.catch}`)
+        let e = new RemoteError(`remote: ${options.name || ''} - method: ${remoteMethodNames[methodKey]} - message: ${payload.catch}`)
         e.stack = payload.stack
         reject(e)
         callPromises.delete(payload.callId)
