@@ -4,6 +4,7 @@ import traverse from "traverse"
 import { memoize as _memoize, set as _set } from "lodash"
 import Backoff from "backo"
 import uuidv4 from "uuid/v4"
+import serializeError from 'serialize-error'
 import type { Duplex } from "stream"
 
 import type { CallPayload, Payload, RejectPayload, RemoteDescriptor, ResolvePayload, SerialMethod, SerialProp } from "./types"
@@ -269,8 +270,7 @@ async function connectRpc(
           let rejectPayload: RejectPayload = {
             type: TYPE_REJECT,
             callId: payload.callId,
-            catch: err.message,
-            stack: err.stack
+            error: serializeError(err)
           }
           stream.write(rejectPayload)
         }
@@ -286,14 +286,22 @@ async function connectRpc(
         callPromises.delete(payload.callId)
       } else if (payload.type === TYPE_REJECT) {
         let { reject, methodKey } = callPromises.get(payload.callId) || {}
+        let { error } = payload
         if (options.debug) console.log(`Edonode - Reject - ${remoteMethodNames[methodKey]}`, payload)
 
         if (!reject) {
           console.error("Missing required callPromise", payload)
           return
         }
-        let e = new RemoteError(`remote: ${options.name || ''} - method: ${remoteMethodNames[methodKey]} - message: ${payload.catch}`)
-        e.stack = payload.stack
+        let e = new RemoteError(`remote: ${options.name || ''} - method: ${remoteMethodNames[methodKey]} - message: ${error.message}`)
+        if (process.env.NODE_ENV !== 'production' && error.sourceMessage) console.error('Edonode - sourceMessage already exists in the rejected error, this value will be overwritten.')
+        Object.keys(payload.error).forEach(k => {
+          // @NOTE we map error.message to error.sourceMessage
+          // $FlowFixMe
+          if (k === 'message') e.sourceMessage = error[k]
+          // $FlowFixMe
+          else e[k] = error[k]
+        })
         reject(e)
         callPromises.delete(payload.callId)
       }

@@ -39,8 +39,7 @@ export type ResolvePayload = {|
 export type RejectPayload = {|
   type: typeof TYPE_REJECT,
   callId: string,
-  catch: string,
-  stack: any
+  error: Object
 |}
 
 export type Payload =
