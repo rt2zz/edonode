@@ -147,7 +147,7 @@ function edonode(baseStream: BaseStream, rpc: Object | void, options: Options): 
   return remote
 }
 
-async function prepareRPC(rpc, options: Options): Promise<[Map<string, Function>, RemoteDescriptor]> {
+async function prepareRPC(rpc, options: Options): Promise<[Map<string, { method: Function, path: string }>, RemoteDescriptor]> {
   let methods = []
   let props = []
   let registry = new Map()
@@ -234,7 +234,7 @@ async function connectRpc(
       if (payload.type === TYPE_DESCRIPTOR) {
         resolveConnect(parseRPC(payload))
       } else if (payload.type === TYPE_CALL) {
-        let { method, path } = localRegistry.get(payload.methodKey)
+        let { method, path } = localRegistry.get(payload.methodKey) || {}
         if (options.debug) console.log(`Edonode - Call - ${path}`, payload)
 
         // @NOTE we allow sessionId to change on any call. The alternative is we could require the connection be reset completely on sessionId change
