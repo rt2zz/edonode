@@ -293,9 +293,9 @@ async function connectRpc(
           console.error("Missing required callPromise", payload)
           return
         }
-        let e = new RemoteError(`remote: ${options.name || ''} - method: ${remoteMethodNames[methodKey]} - message: ${error.message}`)
-        if (process.env.NODE_ENV !== 'production' && error.sourceMessage) console.error('Edonode - sourceMessage already exists in the rejected error, this value will be overwritten.')
-        Object.keys(payload.error).forEach(k => {
+        let e = new RemoteError(`remote: ${options.name || ''} - method: ${remoteMethodNames[methodKey]} - message: ${error && error.message}`)
+        if (process.env.NODE_ENV !== 'production' && error && error.sourceMessage) console.error('Edonode - sourceMessage already exists in the rejected error, this value will be overwritten.')
+        if (error) Object.keys(payload.error).forEach(k => {
           // @NOTE we map error.message to error.sourceMessage
           // $FlowFixMe
           if (k === 'message') e.sourceMessage = error[k]
