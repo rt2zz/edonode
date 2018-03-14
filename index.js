@@ -32,7 +32,7 @@ const sleepReject = async (timeout: number) =>
 export let connectionRegistry: Map<string, any> = new Map()
 
 type BaseStream = () => Duplex | Object
-type VerifyTypeNonce = (nonce: string, signature: any) => void
+type VerifyTypeNonce = (nonce: string, signature: any) => (void | Promise<void>)
 type Options = {|
   autoReconnect?: boolean,
   name?: string,
