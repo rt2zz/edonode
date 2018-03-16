@@ -26,8 +26,8 @@ export type Remote<Face> = {
   sign: (signer: Signer, options: SignerOptions) => void
 }
 
-const sleepReject = async (timeout: number) =>
-  new Promise((resolve, reject) => setTimeout(() => reject(new Error(`edonode: connection timed out after ${timeout}ms`)), timeout))
+const sleepReject = async (timeout: number, label?: string) =>
+  new Promise((resolve, reject) => setTimeout(() => reject(new Error(`edonode: ${label || ''} connection timed out after ${timeout}ms`)), timeout))
 
 export let connectionRegistry: Map<string, any> = new Map()
 
@@ -129,7 +129,7 @@ function edonode(baseStream: BaseStream, rpc: Object | void, options: Options): 
     return Promise.race([
       // @NOTE if there is no rpcPromise, connect immediately. Should this automatic behavior be replaced by an explicit control?
       _rpcPromise || connect(),
-      sleepReject(timeout)
+      sleepReject(timeout, options.name)
     ])
   }
 
