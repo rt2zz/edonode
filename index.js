@@ -35,12 +35,17 @@ type BaseStream = () => Duplex | Object
 type VerifyTypeNonce = (nonce: string, signature: any) => (void | Promise<void>)
 type Options = {|
   autoReconnect?: boolean,
-  name?: string,
   debug?: boolean,
-  sessionId?: PromisyGetterThing,
-  verify?: VerifyTypeNonce,
   duplexSerializer?: Function,
+  name?: string,
+  onStreamEvents?: {
+    onOpen?: (Object) => any,
+    onClose?: (Object) => any,
+    onError?: (Object) => any,
+  },
+  sessionId?: PromisyGetterThing,
   timeout?: number,
+  verify?: VerifyTypeNonce,
 |}
 type ContextMethod<F, O> = {
   v?: F,
@@ -104,16 +109,20 @@ function edonode(baseStream: BaseStream, rpc: Object | void, options: Options): 
 
   function monitorStream(stream) {
     // #stream monitoring
+    let onStreamEvents = options.onStreamEvents
     stream.on("open", e => {
+      if (onStreamEvents.onOpen) onStreamEvents.onOpen(e)
       if (options.debug) console.log("edonode: stream open", e)
     })
 
-    stream.on("error", err => {
-      if (options.debug) console.log("edonode: stream err", err)
+    stream.on("error", e => {
+      if (onStreamEvents.onError) onStreamEvents.onError(e)
+      if (options.debug) console.log("edonode: stream err", e)
       if (options.autoReconnect) requestReconnect()
     })
 
     stream.on("close", e => {
+      if (onStreamEvents.onClose) onStreamEvents.onClose(e)
       if (options.debug) console.log("edonode: stream close", e)
       if (options.autoReconnect) requestReconnect()
       // else: stream closed now, is cleanup required?
