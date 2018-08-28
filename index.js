@@ -109,7 +109,7 @@ function edonode(baseStream: BaseStream, rpc: Object | void, options: Options): 
 
   function monitorStream(stream) {
     // #stream monitoring
-    let onStreamEvents = options.onStreamEvents
+    let onStreamEvents = options.onStreamEvents || {}
     stream.on("open", e => {
       if (onStreamEvents.onOpen) onStreamEvents.onOpen(e)
       if (options.debug) console.log("edonode: stream open", e)
