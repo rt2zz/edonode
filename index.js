@@ -23,6 +23,7 @@ type SignerOptions = {
 export type Remote<Face> = {
   (): Promise<Face>,
   auth: (authenticator: Authenticator) => void,
+  forceConnect: () => any,
   sign: (signer: Signer, options: SignerOptions) => void
 }
 
@@ -152,6 +153,8 @@ function edonode(baseStream: BaseStream, rpc: Object | void, options: Options): 
     // @NOTE this is memoized which means signer need to be deterministic and pure. @TODO anyway to enforce this?
     _context.sign = { v: _memoize(signer), options }
   }
+
+  remote.forceConnect = connect
 
   return remote
 }
